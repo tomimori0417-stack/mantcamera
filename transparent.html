@@ -52,7 +52,7 @@
         }
         #output-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
         #video { display: none; }
-        #bg-video { display: none; } /* 背景動画用の要素 */
+        #bg-video { display: none; }
 
         #loading-message {
             display: none; position: absolute;
@@ -77,11 +77,12 @@
             display: none; position: absolute; top: 60px; right: 15px;
             background: var(--panel-bg); border: 1px solid var(--primary-color);
             padding: 15px; border-radius: 8px; z-index: 20; width: 250px;
+            max-height: 70vh; overflow-y: auto; /* 設定が増えたのでスクロール可能に */
         }
-        .setting-group { margin-bottom: 15px; }
-        .setting-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+        .setting-group { margin-bottom: 12px; }
+        .setting-group label { display: block; margin-bottom: 5px; font-size: 0.85rem; }
         .setting-group input[type="range"], .setting-group input[type="color"], .setting-group select { width: 100%; }
-        #close-settings-btn { width: 100%; padding: 8px; background: #333; color: white; border: 1px solid var(--primary-color); cursor: pointer; }
+        #close-settings-btn { width: 100%; padding: 8px; background: #333; color: white; border: 1px solid var(--primary-color); cursor: pointer; margin-top: 10px;}
 
         #modal {
             display: none; position: fixed; top: 0; left: 0;
@@ -112,27 +113,36 @@
             </select>
         </div>
         <div class="setting-group">
-            <label>透過する色（初期：濃い紫）</label>
+            <label>透過する色</label>
             <input type="color" id="target-color" value="#4b0082">
         </div>
         <div class="setting-group">
-            <label>透過の強さ (しきい値): <span id="threshold-val">90</span></label>
+            <label>透過の強さ: <span id="threshold-val">90</span></label>
             <input type="range" id="threshold" min="0" max="255" value="90">
+        </div>
+        <hr style="border-color: #555;">
+        <!-- 動画サイズ調整用の設定を追加 -->
+        <div class="setting-group">
+            <label>動画の拡大・縮小: <span id="bg-zoom-val">1.0</span>x</label>
+            <input type="range" id="bg-zoom" min="0.3" max="2.5" step="0.1" value="1.0">
+        </div>
+        <div class="setting-group">
+            <label>動画の左右移動: <span id="bg-x-val">0</span></label>
+            <input type="range" id="bg-x" min="-1000" max="1000" step="10" value="0">
+        </div>
+        <div class="setting-group">
+            <label>動画の上下移動: <span id="bg-y-val">0</span></label>
+            <input type="range" id="bg-y" min="-1000" max="1000" step="10" value="0">
         </div>
         <button id="close-settings-btn">閉じる</button>
     </div>
 
     <div id="camera-container">
-        <div id="loading-message">魔法の鏡を準備中...<br><span style="font-size:0.8rem">（カメラの許可をお願いします）</span></div>
-        
-        <!-- カメラ映像用 -->
+        <div id="loading-message">魔法の鏡を準備中...</div>
         <video id="video" playsinline muted autoplay></video>
-        
-        <!-- 背景動画用（HTMLに直接埋め込むことでスマホの制限を回避） -->
         <video id="bg-video" 
                src="https://cdn.jsdelivr.net/gh/tomimori0417-stack/oc-assets@14623f8a01f79ffd79e6566dca9433d6ae0d2751/gemini_generated_video_dcc32d1c.mp4" 
                playsinline muted loop crossorigin="anonymous"></video>
-               
         <canvas id="output-canvas"></canvas>
     </div>
 
@@ -152,11 +162,14 @@
 const APP_CONFIG = {
     TARGET_COLOR: { r: 75, g: 0, b: 130 },
     THRESHOLD: 90,
-    FACING_MODE: 'environment'
+    FACING_MODE: 'environment',
+    BG_ZOOM: 1.0,     // 背景の拡大率
+    BG_OFFSET_X: 0,   // 背景のX軸ズレ
+    BG_OFFSET_Y: 0    // 背景のY軸ズレ
 };
 
 let videoElement = document.getElementById('video');
-let bgVideo = document.getElementById('bg-video'); // HTMLから取得
+let bgVideo = document.getElementById('bg-video');
 let outputCanvas = document.getElementById('output-canvas');
 let outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -172,6 +185,14 @@ const thresholdVal = document.getElementById('threshold-val');
 const cameraSelect = document.getElementById('camera-select');
 const loadingMessage = document.getElementById('loading-message');
 
+// 新規追加したコントロール
+const bgZoomInput = document.getElementById('bg-zoom');
+const bgZoomVal = document.getElementById('bg-zoom-val');
+const bgXInput = document.getElementById('bg-x');
+const bgXVal = document.getElementById('bg-x-val');
+const bgYInput = document.getElementById('bg-y');
+const bgYVal = document.getElementById('bg-y-val');
+
 function hexToRgb(hex) {
     let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
@@ -181,14 +202,10 @@ function colorDistance(r1, g1, b1, r2, g2, b2) {
     return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
 }
 
-// 起動ボタン
 document.getElementById('start-btn').addEventListener('click', () => {
     document.getElementById('start-screen').style.display = 'none';
     loadingMessage.style.display = 'block';
-    
-    // 背景動画の再生を開始
-    bgVideo.play().catch(e => console.error("背景動画エラー:", e));
-
+    bgVideo.play().catch(e => console.error(e));
     startCamera();
 });
 
@@ -199,11 +216,7 @@ async function startCamera(isFallback = false) {
 
     let constraints = { audio: false };
     if (!isFallback) {
-        constraints.video = { 
-            facingMode: APP_CONFIG.FACING_MODE,
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-        };
+        constraints.video = { facingMode: APP_CONFIG.FACING_MODE, width: { ideal: 1280 }, height: { ideal: 720 } };
     } else {
         constraints.video = true;
     }
@@ -231,29 +244,34 @@ async function startCamera(isFallback = false) {
             startCamera(true);
             return;
         }
-        loadingMessage.innerHTML = `カメラを起動できませんでした。<br>エラー: ${err.name}`;
+        loadingMessage.innerHTML = `カメラ起動エラー: ${err.name}`;
     }
 }
 
 function processVideo() {
     if (!isPlaying) return;
     
-    // 1. カメラ映像を描画
     outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
     
-    // 2. 背景動画を描画
     if (bgVideo.readyState >= 2) {
         const vRatio = outputCanvas.width / bgVideo.videoWidth;
         const hRatio = outputCanvas.height / bgVideo.videoHeight;
-        const ratio  = Math.max(vRatio, hRatio);
-        const centerShift_x = (outputCanvas.width - bgVideo.videoWidth * ratio) / 2;
-        const centerShift_y = (outputCanvas.height - bgVideo.videoHeight * ratio) / 2;
+        const baseRatio  = Math.max(vRatio, hRatio);
+        
+        // 拡大縮小スライダーの値を掛け合わせる
+        const finalRatio = baseRatio * APP_CONFIG.BG_ZOOM;
+        
+        // 移動スライダーの値を足し合わせる
+        const centerShift_x = (outputCanvas.width - bgVideo.videoWidth * finalRatio) / 2 + APP_CONFIG.BG_OFFSET_X;
+        const centerShift_y = (outputCanvas.height - bgVideo.videoHeight * finalRatio) / 2 + APP_CONFIG.BG_OFFSET_Y;
+        
+        // 縮小した際に前のフレームの残像が残らないように背景を一度クリアする
+        bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
         
         bgCtx.drawImage(bgVideo, 0, 0, bgVideo.videoWidth, bgVideo.videoHeight,
-                        centerShift_x, centerShift_y, bgVideo.videoWidth * ratio, bgVideo.videoHeight * ratio);
+                        centerShift_x, centerShift_y, bgVideo.videoWidth * finalRatio, bgVideo.videoHeight * finalRatio);
     }
     
-    // 3. クロマキー合成処理
     let frame = outputCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
     let l = frame.data.length / 4;
     let bgFrame = bgCtx.getImageData(0, 0, bgCanvas.width, bgCanvas.height);
@@ -312,6 +330,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     document.body.removeChild(a);
 });
 
+// UIイベントの登録
 const settingsBtn = document.getElementById('settings-btn');
 const settingsPanel = document.getElementById('settings-panel');
 settingsBtn.addEventListener('click', () => { settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block'; });
@@ -328,6 +347,20 @@ thresholdInput.addEventListener('input', (e) => {
 cameraSelect.addEventListener('change', (e) => {
     APP_CONFIG.FACING_MODE = e.target.value;
     startCamera();
+});
+
+// 新規コントロールのイベント
+bgZoomInput.addEventListener('input', (e) => {
+    APP_CONFIG.BG_ZOOM = parseFloat(e.target.value);
+    bgZoomVal.innerText = APP_CONFIG.BG_ZOOM.toFixed(1);
+});
+bgXInput.addEventListener('input', (e) => {
+    APP_CONFIG.BG_OFFSET_X = parseInt(e.target.value, 10);
+    bgXVal.innerText = APP_CONFIG.BG_OFFSET_X;
+});
+bgYInput.addEventListener('input', (e) => {
+    APP_CONFIG.BG_OFFSET_Y = parseInt(e.target.value, 10);
+    bgYVal.innerText = APP_CONFIG.BG_OFFSET_Y;
 });
 </script>
 </body>
