@@ -1,1 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>透明マント体験</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Serif+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #d4af37;
+            --bg-color: #111;
+            --panel-bg: rgba(20, 20, 20, 0.9);
+        }
+        
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            font-family: 'Noto Serif JP', 'Cinzel', serif;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+        }
 
+        #start-screen {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 50;
+        }
+        #start-screen h1 { font-size: 2.5rem; margin-bottom: 30px; text-align: center; }
+        #start-btn {
+            padding: 15px 40px; font-size: 1.3rem; font-family: 'Noto Serif JP', serif;
+            background: linear-gradient(135deg, #d4af37, #8b6914);
+            color: #000; font-weight: bold;
+            border: 2px solid #fff; border-radius: 8px; cursor: pointer;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+        }
+
+        header {
+            text-align: center; padding: 15px 10px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            position: absolute; top: 0; left: 0; width: 100%; z-index: 10;
+        }
+        h2 { margin: 0; font-size: 1.5rem; letter-spacing: 2px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); font-family: 'Cinzel', serif; }
+
+        #camera-container {
+            flex: 1; position: relative; display: flex;
+            justify-content: center; align-items: center; background-color: #000;
+        }
+        #output-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+        #video { display: none; }
+
+        #loading-message {
+            display: none; position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 1.2rem; text-shadow: 1px 1px 3px #000; text-align: center; z-index: 5;
+        }
+
+        #controls { position: absolute; bottom: 30px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 10; }
+        #capture-btn {
+            background: radial-gradient(circle, #f9f0a6 0%, #d4af37 100%);
+            border: 2px solid #fff; border-radius: 50%;
+            width: 70px; height: 70px; cursor: pointer;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+        }
+
+        #settings-btn {
+            position: absolute; top: 15px; right: 15px;
+            background: none; border: none; font-size: 1.5rem;
+            color: var(--primary-color); cursor: pointer; z-index: 20;
+        }
+        #settings-panel {
+            display: none; position: absolute; top: 60px; right: 15px;
+            background: var(--panel-bg); border: 1px solid var(--primary-color);
+            padding: 15px; border-radius: 8px; z-index: 20; width: 250px;
+        }
+        .setting-group { margin-bottom: 15px; }
+        .setting-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+        .setting-group input[type="range"], .setting-group input[type="color"], .setting-group select { width: 100%; }
+        #close-settings-btn { width: 100%; padding: 8px; background: #333; color: white; border: 1px solid var(--primary-color); cursor: pointer; }
+
+        #modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9);
+            z-index: 100; justify-content: center; align-items: center; flex-direction: column;
+        }
+        #result-image { max-width: 90%; max-height: 70%; border: 3px solid var(--primary-color); border-radius: 5px; }
+        .modal-buttons { margin-top: 20px; display: flex; gap: 20px; }
+        .modal-btn { padding: 12px 24px; font-size: 1.1rem; border: 1px solid var(--primary-color); background: transparent; color: var(--primary-color); border-radius: 4px; cursor: pointer; }
+        .modal-btn.primary { background: var(--primary-color); color: #000; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <h1>透明マント体験</h1>
+        <button id="start-btn">魔法の鏡を起動する</button>
+    </div>
+
+    <header><h2>透明マント体験</h2></header>
+
+    <button id="settings-btn">⚙️</button>
+    <div id="settings-panel">
+        <div class="setting-group">
+            <label>カメラ切替</label>
+            <select id="camera-select">
+                <option value="environment">背面カメラ（メイン）</option>
+                <option value="user">インカメラ（前面）</option>
+            </select>
+        </div>
+        <div class="setting-group">
+            <label>透過する色（初期：濃い紫）</label>
+            <input type="color" id="target-color" value="#4b0082">
+        </div>
+        <div class="setting-group">
+            <label>透過の強さ (しきい値): <span id="threshold-val">90</span></label>
+            <input type="range" id="threshold" min="0" max="255" value="90">
+        </div>
+        <button id="close-settings-btn">閉じる</button>
+    </div>
+
+    <div id="camera-container">
+        <div id="loading-message">魔法の鏡を準備中...<br><span style="font-size:0.8rem">（カメラの許可をお願いします）</span></div>
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <button id="capture-btn" aria-label="撮影する"></button>
+    </div>
+
+    <div id="modal">
+        <img id="result-image" alt="撮影結果">
+        <div class="modal-buttons">
+            <button class="modal-btn" id="retake-btn">やり直す</button>
+            <button class="modal-btn primary" id="save-btn">魔法を保存する</button>
+        </div>
+    </div>
+
+<script>
+// ★ 同じGitHub内にあるため、相対パスで直接ファイル名を指定します
+const APP_CONFIG = {
+    BG_VIDEO_URL: "./gemini_generated_video_dcc32d1c.mp4",
+    TARGET_COLOR: { r: 75, g: 0, b: 130 },
+    THRESHOLD: 90,
+    FACING_MODE: 'environment'
+};
+
+let videoElement = document.getElementById('video');
+let outputCanvas = document.getElementById('output-canvas');
+let outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
+let bgVideo = null;
+let bgCanvas = document.createElement('canvas');
+let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+let isPlaying = false;
+let animationId;
+let currentStream = null;
+
+const targetColorInput = document.getElementById('target-color');
+const thresholdInput = document.getElementById('threshold');
+const thresholdVal = document.getElementById('threshold-val');
+const cameraSelect = document.getElementById('camera-select');
+const loadingMessage = document.getElementById('loading-message');
+
+function hexToRgb(hex) {
+    let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+}
+
+function colorDistance(r1, g1, b1, r2, g2, b2) {
+    return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+    document.getElementById('start-screen').style.display = 'none';
+    loadingMessage.style.display = 'block';
+    
+    bgVideo = document.createElement('video');
+    bgVideo.crossOrigin = "anonymous";
+    bgVideo.src = APP_CONFIG.BG_VIDEO_URL;
+    bgVideo.loop = true;
+    bgVideo.muted = true;
+    bgVideo.playsInline = true;
+    bgVideo.play().catch(e => console.error("背景動画エラー:", e));
+
+    startCamera();
+});
+
+async function startCamera(isFallback = false) {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    let constraints = { audio: false };
+    if (!isFallback) {
+        constraints.video = { 
+            facingMode: APP_CONFIG.FACING_MODE,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        };
+    } else {
+        constraints.video = true;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = stream;
+        currentStream = stream;
+        videoElement.play().catch(e => console.warn(e));
+        
+        videoElement.onloadedmetadata = () => {
+            outputCanvas.width = videoElement.videoWidth;
+            outputCanvas.height = videoElement.videoHeight;
+            bgCanvas.width = videoElement.videoWidth;
+            bgCanvas.height = videoElement.videoHeight;
+            
+            loadingMessage.style.display = 'none';
+            if (!isPlaying) {
+                isPlaying = true;
+                processVideo();
+            }
+        };
+    } catch (err) {
+        if (!isFallback) {
+            startCamera(true);
+            return;
+        }
+        loadingMessage.innerHTML = `カメラを起動できませんでした。<br>エラー: ${err.name}`;
+    }
+}
+
+function processVideo() {
+    if (!isPlaying) return;
+    
+    outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
+    
+    if (bgVideo && bgVideo.readyState >= 2) {
+        const vRatio = outputCanvas.width / bgVideo.videoWidth;
+        const hRatio = outputCanvas.height / bgVideo.videoHeight;
+        const ratio  = Math.max(vRatio, hRatio);
+        const centerShift_x = (outputCanvas.width - bgVideo.videoWidth * ratio) / 2;
+        const centerShift_y = (outputCanvas.height - bgVideo.videoHeight * ratio) / 2;
+        
+        bgCtx.drawImage(bgVideo, 0, 0, bgVideo.videoWidth, bgVideo.videoHeight,
+                        centerShift_x, centerShift_y, bgVideo.videoWidth * ratio, bgVideo.videoHeight * ratio);
+    }
+    
+    let frame = outputCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    let l = frame.data.length / 4;
+    let bgFrame = bgCtx.getImageData(0, 0, bgCanvas.width, bgCanvas.height);
+    const tc = APP_CONFIG.TARGET_COLOR;
+    const th = APP_CONFIG.THRESHOLD;
+    
+    for (let i = 0; i < l; i++) {
+        let r = frame.data[i * 4 + 0];
+        let g = frame.data[i * 4 + 1];
+        let b = frame.data[i * 4 + 2];
+        
+        if (colorDistance(r, g, b, tc.r, tc.g, tc.b) < th) {
+            frame.data[i * 4 + 0] = bgFrame.data[i * 4 + 0];
+            frame.data[i * 4 + 1] = bgFrame.data[i * 4 + 1];
+            frame.data[i * 4 + 2] = bgFrame.data[i * 4 + 2];
+        }
+    }
+    
+    outputCtx.putImageData(frame, 0, 0);
+    animationId = requestAnimationFrame(processVideo);
+}
+
+document.getElementById('capture-btn').addEventListener('click', () => {
+    isPlaying = false;
+    cancelAnimationFrame(animationId);
+    if(bgVideo) bgVideo.pause();
+    document.getElementById('result-image').src = outputCanvas.toDataURL('image/jpeg', 0.9);
+    document.getElementById('modal').style.display = 'flex';
+});
+
+document.getElementById('retake-btn').addEventListener('click', () => {
+    document.getElementById('modal').style.display = 'none';
+    isPlaying = true;
+    if(bgVideo) bgVideo.play();
+    processVideo();
+});
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+    const dataUrl = outputCanvas.toDataURL('image/jpeg', 0.9);
+    if (navigator.share && navigator.canShare) {
+        try {
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const file = new File([blob], 'magic_cloak.jpg', { type: 'image/jpeg' });
+            if (navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: '透明マント体験' });
+                return;
+            }
+        } catch (e) { console.log(e); }
+    }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'magic_cloak.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+});
+
+const settingsBtn = document.getElementById('settings-btn');
+const settingsPanel = document.getElementById('settings-panel');
+settingsBtn.addEventListener('click', () => { settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block'; });
+document.getElementById('close-settings-btn').addEventListener('click', () => { settingsPanel.style.display = 'none'; });
+
+targetColorInput.addEventListener('input', (e) => {
+    const rgb = hexToRgb(e.target.value);
+    if (rgb) APP_CONFIG.TARGET_COLOR = rgb;
+});
+thresholdInput.addEventListener('input', (e) => {
+    APP_CONFIG.THRESHOLD = parseInt(e.target.value, 10);
+    thresholdVal.innerText = APP_CONFIG.THRESHOLD;
+});
+cameraSelect.addEventListener('change', (e) => {
+    APP_CONFIG.FACING_MODE = e.target.value;
+    startCamera();
+});
+</script>
+</body>
+</html>
