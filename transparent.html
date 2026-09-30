@@ -52,6 +52,7 @@
         }
         #output-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
         #video { display: none; }
+        #bg-video { display: none; } /* 背景動画用の要素 */
 
         #loading-message {
             display: none; position: absolute;
@@ -123,7 +124,15 @@
 
     <div id="camera-container">
         <div id="loading-message">魔法の鏡を準備中...<br><span style="font-size:0.8rem">（カメラの許可をお願いします）</span></div>
+        
+        <!-- カメラ映像用 -->
         <video id="video" playsinline muted autoplay></video>
+        
+        <!-- 背景動画用（HTMLに直接埋め込むことでスマホの制限を回避） -->
+        <video id="bg-video" 
+               src="https://cdn.jsdelivr.net/gh/tomimori0417-stack/oc-assets@14623f8a01f79ffd79e6566dca9433d6ae0d2751/gemini_generated_video_dcc32d1c.mp4" 
+               playsinline muted loop crossorigin="anonymous"></video>
+               
         <canvas id="output-canvas"></canvas>
     </div>
 
@@ -140,18 +149,17 @@
     </div>
 
 <script>
-// ★ 同じGitHub内にあるため、相対パスで直接ファイル名を指定します
 const APP_CONFIG = {
-    BG_VIDEO_URL: "./gemini_generated_video_dcc32d1c.mp4",
     TARGET_COLOR: { r: 75, g: 0, b: 130 },
     THRESHOLD: 90,
     FACING_MODE: 'environment'
 };
 
 let videoElement = document.getElementById('video');
+let bgVideo = document.getElementById('bg-video'); // HTMLから取得
 let outputCanvas = document.getElementById('output-canvas');
 let outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
-let bgVideo = null;
+
 let bgCanvas = document.createElement('canvas');
 let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 let isPlaying = false;
@@ -173,16 +181,12 @@ function colorDistance(r1, g1, b1, r2, g2, b2) {
     return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
 }
 
+// 起動ボタン
 document.getElementById('start-btn').addEventListener('click', () => {
     document.getElementById('start-screen').style.display = 'none';
     loadingMessage.style.display = 'block';
     
-    bgVideo = document.createElement('video');
-    bgVideo.crossOrigin = "anonymous";
-    bgVideo.src = APP_CONFIG.BG_VIDEO_URL;
-    bgVideo.loop = true;
-    bgVideo.muted = true;
-    bgVideo.playsInline = true;
+    // 背景動画の再生を開始
     bgVideo.play().catch(e => console.error("背景動画エラー:", e));
 
     startCamera();
@@ -234,9 +238,11 @@ async function startCamera(isFallback = false) {
 function processVideo() {
     if (!isPlaying) return;
     
+    // 1. カメラ映像を描画
     outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
     
-    if (bgVideo && bgVideo.readyState >= 2) {
+    // 2. 背景動画を描画
+    if (bgVideo.readyState >= 2) {
         const vRatio = outputCanvas.width / bgVideo.videoWidth;
         const hRatio = outputCanvas.height / bgVideo.videoHeight;
         const ratio  = Math.max(vRatio, hRatio);
@@ -247,6 +253,7 @@ function processVideo() {
                         centerShift_x, centerShift_y, bgVideo.videoWidth * ratio, bgVideo.videoHeight * ratio);
     }
     
+    // 3. クロマキー合成処理
     let frame = outputCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
     let l = frame.data.length / 4;
     let bgFrame = bgCtx.getImageData(0, 0, bgCanvas.width, bgCanvas.height);
@@ -272,7 +279,7 @@ function processVideo() {
 document.getElementById('capture-btn').addEventListener('click', () => {
     isPlaying = false;
     cancelAnimationFrame(animationId);
-    if(bgVideo) bgVideo.pause();
+    bgVideo.pause();
     document.getElementById('result-image').src = outputCanvas.toDataURL('image/jpeg', 0.9);
     document.getElementById('modal').style.display = 'flex';
 });
@@ -280,7 +287,7 @@ document.getElementById('capture-btn').addEventListener('click', () => {
 document.getElementById('retake-btn').addEventListener('click', () => {
     document.getElementById('modal').style.display = 'none';
     isPlaying = true;
-    if(bgVideo) bgVideo.play();
+    bgVideo.play();
     processVideo();
 });
 
